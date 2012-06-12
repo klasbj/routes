@@ -44,13 +44,17 @@ type Route struct {
 }
 
 type RouteMux struct {
-	routes  []*Route
-	Logging bool
-	Logger  *log.Logger
+	routes     []*Route
+	static     bool
+	static_dir string
+	Logging    bool
+	Logger     *log.Logger
 }
 
 func New() *RouteMux {
 	routeMux := RouteMux{}
+	routeMux.static = false
+	routeMux.static_dir = ""
 	routeMux.Logging = true
 	routeMux.Logger = log.New(os.Stdout, "", 0)
 	return &routeMux
@@ -155,6 +159,12 @@ func (this *RouteMux) Static(pattern string, dir string) *Route {
 	})
 }
 
+// Adds a default static path for paths which do not match any routes
+func (this *RouteMux) DefaultStatic(dir string) {
+	this.static = true
+	this.static_dir = dir
+}
+
 // Required by http.Handler interface. This method is invoked by the
 // http server and will handle all page routing
 func (this *RouteMux) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -214,9 +224,16 @@ func (this *RouteMux) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		break
 	}
 
-	//if no matches to url, throw a not found exception
+	//if no matches to url
 	if w.started == false {
-		http.NotFound(w, r)
+		// if a static route is set, attempt to send the file, else return 404
+		if this.static {
+			path := filepath.Clean(r.URL.Path)
+			path = filepath.Join(this.static_dir, path)
+			http.ServeFile(w, r, path)
+		} else {
+			http.NotFound(w, r)
+		}
 	}
 
 	//if logging is turned on
