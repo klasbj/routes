@@ -221,7 +221,19 @@ func (this *RouteMux) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		//Invoke the request handler
 		route.handler(w, r)
 
-		break
+		// if the response has been written, break
+		if w.started {
+			break
+		} else {
+			// remove the values written to the url
+			values := r.URL.Query()
+			for i, _ := range matches[1:] {
+				values.Del(route.params[i])
+			}
+
+			//reassemble query params and add to RawQuery
+			r.URL.RawQuery = url.Values(values).Encode()
+		}
 	}
 
 	//if no matches to url
