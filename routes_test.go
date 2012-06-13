@@ -18,6 +18,10 @@ var HandlerErr = func(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "", http.StatusBadRequest)
 }
 
+var HandlerFallthrough = func(w http.ResponseWriter, r *http.Request) {
+	return // don't do anything, just fall through
+}
+
 // TestAuthOk tests that an Auth handler will append the
 // username and password to to the request URL, and will
 // continue processing the request by invoking the handler.
@@ -42,6 +46,46 @@ func TestRouteOk(t *testing.T) {
 	}
 	if learnParam != "kungfu" {
 		t.Errorf("url param set to [%s]; want [%s]", learnParam, "kungfu")
+	}
+}
+
+func TestRouteFallthrough(t *testing.T) {
+	r, _ := http.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	handler := new(RouteMux)
+	handler.Get("/:first", HandlerFallthrough)
+	handler.Get("/:second", HandlerOk)
+	handler.ServeHTTP(w, r)
+
+	firstParam := r.URL.Query().Get(":first")
+	secondParam := r.URL.Query().Get(":second")
+
+	if firstParam != "" {
+		t.Errorf("url param set to [%s]; want [%s]", firstParam, "")
+	}
+	if secondParam != "test" {
+		t.Errorf("url param set to [%s]; want [%s]", secondParam, "test")
+	}
+}
+
+func TestRouteNotFallthrough(t *testing.T) {
+	r, _ := http.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	handler := new(RouteMux)
+	handler.Get("/:first", HandlerOk)
+	handler.Get("/:second", HandlerOk)
+	handler.ServeHTTP(w, r)
+
+	firstParam := r.URL.Query().Get(":first")
+	secondParam := r.URL.Query().Get(":second")
+
+	if firstParam != "test" {
+		t.Errorf("url param set to [%s]; want [%s]", firstParam, "test")
+	}
+	if secondParam != "" {
+		t.Errorf("url param set to [%s]; want [%s]", secondParam, "")
 	}
 }
 
@@ -70,6 +114,24 @@ func TestStatic(t *testing.T) {
 
 	handler := new(RouteMux)
 	handler.Static("/", pwd)
+	handler.ServeHTTP(w, r)
+
+	testFile, _ := ioutil.ReadFile(pwd + "/routes_test.go")
+	if w.Body.String() != string(testFile) {
+		t.Errorf("handler.Static failed to serve file")
+	}
+}
+
+// TestDefaultStatic tests the ability to serve static
+// content from the filesystem when the path does not match any route
+func TestDefaultStatic(t *testing.T) {
+
+	r, _ := http.NewRequest("GET", "/routes_test.go", nil)
+	w := httptest.NewRecorder()
+	pwd, _ := os.Getwd()
+
+	handler := new(RouteMux)
+	handler.DefaultStatic(pwd)
 	handler.ServeHTTP(w, r)
 
 	testFile, _ := ioutil.ReadFile(pwd + "/routes_test.go")
